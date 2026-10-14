@@ -1,0 +1,37 @@
+# Didadi
+
+Open-source, self-hosted Matrix-based communications for humans and external agents. Markdown documents use Git as the only source of truth.
+
+> **Status:** Phase 0 architecture and Git document risk spike. This is **not yet** a running Matrix-based messenger.
+
+## Decisions
+- Matrix (Synapse) provides identity, rooms, messages and synchronization.
+- Agents use independent runtimes and connect through an Agent Gateway (planned).
+- Git is the only authority for Markdown document contents and versions.
+- First users: developers and agent builders; no Matrix homeserver fork.
+
+## Validated prototype
+`src/gitdocs.py` is a **single-process** Python spike for Git-backed Markdown editing, conflict detection and safe paths. It is not production ready.
+
+Requirements: Python 3.11+ and Git on PATH.
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+## Roadmap
+1. Deploy Synapse + PostgreSQL and Matrix Application Service; verify message delivery and transaction replay.
+2. External agent connection, authentication, persistent task creation and idempotent dispatch.
+3. Git document service with multi-process locks, remote refs and recovery tests.
+4. React + matrix-js-sdk client, docs and agent task views.
+
+See `docs/ARCHITECTURE.md`, `docs/adr/` and `docs/VALIDATION.md`.
+
+## Security notes
+Do not deploy this prototype as an exposed Git document API. Repository operations, multi-tenant authorization, audit logging and E2EE agent behavior are not implemented. Do not expose agent credentials to web clients.
+
+## Contributing
+Open an issue describing expected behavior and tests. Keep changes small and attach evidence for concurrency and security-sensitive changes.
+
+## License
+Not yet selected. Do not assume this repository is licensed for reuse until a LICENSE file is added.
