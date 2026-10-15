@@ -19,3 +19,28 @@ jobs:
           git config --global user.email 'ci@example.invalid'
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+  matrix-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose
+        run: docker compose config --quiet
+      - name: Start real Matrix stack
+        run: docker compose up -d --wait --wait-timeout 240
+      - name: Bidirectional messaging and managed agent reply
+        run: docker compose --profile test run --rm smoke
+      - name: Recreate containers while retaining volumes
+        run: |
+          docker compose down
+          docker compose up -d --wait --wait-timeout 240
+          docker compose --profile test run --rm smoke python -u -m scripts.matrix_smoke --check-persistence
+          docker compose --profile test run --rm smoke
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail=150 synapse postgres appservice
+      - name: Cleanup
+        if: always()
+        run: docker compose --profile test down -v

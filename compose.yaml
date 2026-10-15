@@ -1,0 +1,79 @@
+name: didadi
+services:
+  init:
+    image: python:3.13-slim
+    command: python /app/deploy/init.py
+    volumes:
+      - ./deploy:/app/deploy:ro
+      - config:/config
+      - synapse:/synapse-data
+  postgres:
+    image: postgres:16.10-bookworm
+    environment:
+      POSTGRES_USER: synapse
+      POSTGRES_DB: synapse
+      POSTGRES_PASSWORD_FILE: /config/postgres-password
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      - config:/config:ro
+      - postgres:/var/lib/postgresql/data
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U synapse -d synapse']
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  synapse:
+    image: matrixdotorg/synapse:v1.139.0
+    environment:
+      SYNAPSE_CONFIG_PATH: /config/homeserver.yaml
+    ports:
+      - '127.0.0.1:8008:8008'
+    volumes:
+      - config:/config:ro
+      - synapse:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      appservice:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8008/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+  appservice:
+    image: python:3.13-slim
+    working_dir: /app
+    command: python -u -m src.matrix_as
+    environment:
+      MATRIX_URL: http://synapse:8008
+    volumes:
+      - ./src:/app/src:ro
+      - config:/config:ro
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:9000/health', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  smoke:
+    image: python:3.13-slim
+    profiles: [test]
+    working_dir: /app
+    command: python -u -m scripts.matrix_smoke
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./src:/app/src:ro
+      - config:/config
+    depends_on:
+      synapse:
+        condition: service_healthy
+volumes:
+  config:
+  postgres:
+  synapse:

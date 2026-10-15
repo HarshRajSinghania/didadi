@@ -21,3 +21,16 @@ Sources: https://spec.matrix.org/latest/application-service-api/ ; https://githu
 - Verify E2EE rooms are rejected for agent tasks with clear UI feedback.
 
 **No claims of end-to-end Matrix validation or production readiness are made.**
+
+
+## Issue #1 implementation — 2026-10-15 (Asia/Shanghai)
+
+Implemented Compose initialization, PostgreSQL persistence, Synapse registration, a scoped synchronous AS echo fixture, and a real Matrix smoke-test job. Exact commands and permission boundaries: [MATRIX_QUICKSTART.md](MATRIX_QUICKSTART.md).
+
+Local evidence: `python -m unittest discover -s tests -v` passed **10 tests** (4 existing Git tests, 6 Matrix/configuration tests). `git diff --check` passed. Tests cover token rejection, retryable failure ACK, stable reply transaction IDs, invitation handling, filtering and fail-closed encryption-state lookup. These are unit/HTTP fixture tests, not evidence of a real Synapse deployment.
+
+The editing environment has no Docker executable/daemon; real runtime validation was performed on GitHub Actions Ubuntu instead. **PASS**: [run 38664316060](https://github.com/douyixuan/didadi/actions/runs/38664316060), implementation commit `c4555f0764f699b75f21e4e59639f60df48f6517`, 2026-10-15 (Asia/Shanghai). Both jobs passed: 10 unit tests and the real Matrix integration job.
+
+Runtime evidence: Compose configuration and image pulls succeeded; Synapse, PostgreSQL and AS became healthy; unauthenticated AS traffic was rejected; out-of-namespace human impersonation was rejected; Alice/Bob exchanged messages in both directions via `/sync`; AS received the trigger and replied as the managed echo identity; replay yielded one reply. Containers were removed and recreated while retaining volumes; both original user tokens could read the original room message; a second complete smoke run passed.
+
+Two failures found during real CI were fixed before this passing run: initialize Synapse data volume ownership as 991:991, and permit the smoke fixture to persist its restart-check credentials. No runtime validation is claimed for macOS/ARM, production deployment, or long-outage exactly-once behavior. The Phase 1 durable task and Git concurrency gates above remain outstanding and are deliberately outside this change.
