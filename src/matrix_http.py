@@ -26,4 +26,10 @@ def request(base, method, path, token=None, data=None, query=None):
         with urlopen(req, timeout=15) as response:
             return json.load(response)
     except HTTPError as error:
-        raise MatrixError(error.code, json.load(error)) from None
+        try:
+            body = json.load(error)
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        raise MatrixError(error.code, body) from None
