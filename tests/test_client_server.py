@@ -1,0 +1,91 @@
+from http.server import ThreadingHTTPServer
+import json
+import sqlite3
+from pathlib import Path
+import tempfile
+import threading
+import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request,urlopen
+
+from src.client_server import ClientError,Workspace,handler
+from src.matrix_as import AGENT
+from src.matrix_http import MatrixError
+
+
+class ClientServerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
+        self.root=Path(self.tmp.name)
+        self.calls=[];self.encrypted=False;self.alias_exists=False
+        self.api_patch=patch.object(Workspace,'api',side_effect=self.api)
+        self.api_patch.start();self.addCleanup(self.api_patch.stop)
+        self.workspace=Workspace({'room':'!seed:local','tokens':['private-human-token']},'private-worker-token',
+                                 self.root/'docs.git',self.root/'rooms.sqlite','http://127.0.0.1:8009','http://127.0.0.1:9001')
+
+    def api(self,method,path,data=None,query=None):
+        self.calls.append((method,path,data,query))
+        if path=='/account/whoami':return {'user_id':'@human:local'}
+        if path=='/joined_rooms':return {'joined_rooms':['!seed:local','!ungranted:local','!created:local']}
+        if path=='/createRoom':
+            if self.alias_exists:raise MatrixError(400,{'errcode':'M_ROOM_IN_USE'})
+            return {'room_id':'!created:local'}
+        if path.startswith('/directory/room/'):return {'room_id':'!created:local'}
+        if '/state/m.room.member/' in path:return {'membership':'join'}
+        if path.endswith('/state'):
+            return ([{'type':'m.room.encryption','content':{}}] if self.encrypted else [])+[
+                {'type':'m.room.member','state_key':AGENT,'content':{'membership':'join'}}]
+        if '/send/' in path:return {'event_id':'$one'}
+        return {'chunk':[]}
+
+    def test_only_explicit_rooms_routes_and_identity_are_proxied(self):
+        self.assertEqual(self.workspace.proxy('GET','/joined_rooms',{})['joined_rooms'],['!seed:local'])
+        for method,path,query in [('GET','/account/whoami',{}),('GET','/rooms/!ungranted:local/state',{}),
+                                  ('POST','/rooms/!seed:local/state',{}),('GET','/joined_rooms',{'user_id':['@other']})]:
+            with self.assertRaises(ClientError):self.workspace.proxy(method,path,query)
+
+    def test_encryption_and_invalid_agent_grants_fail_before_send(self):
+        content={'msgtype':'m.text','body':'hello','m.mentions':{'user_ids':[AGENT]}}
+        self.encrypted=True
+        with self.assertRaises(ClientError) as error:self.workspace.proxy('PUT','/rooms/!seed:local/send/m.room.message/one',{},content)
+        self.assertEqual(error.exception.status,409)
+        self.assertFalse(any('/send/' in call[1] for call in self.calls))
+        self.encrypted=False
+        content['org.didadi.document']={'action':'write','content':'safe','name':'../escape.md'}
+        with self.assertRaises(ClientError):self.workspace.proxy('PUT','/rooms/!seed:local/send/m.room.message/one',{},content)
+
+    def test_room_creation_is_idempotent_and_recovers_after_lost_record(self):
+        first=self.workspace.create_room('stable-request-id','Client room')
+        second=self.workspace.create_room('stable-request-id','Client room')
+        self.assertEqual(first,second)
+        self.assertEqual(sum(path=='/createRoom' for _,path,_,_ in self.calls),1)
+        with sqlite3.connect(self.workspace.metadata) as db:
+            db.execute("DELETE FROM rooms WHERE operation='stable-request-id'")
+        self.alias_exists=True
+        self.assertEqual(self.workspace.create_room('stable-request-id','Recovered room')['room_id'],'!created:local')
+        self.workspace.allowed('!created:local')
+
+    def test_http_csrf_host_and_static_path_boundaries_without_token_disclosure(self):
+        dist=self.root/'dist';dist.mkdir();(dist/'index.html').write_text('<html>workspace</html>')
+        server=ThreadingHTTPServer(('127.0.0.1',0),lambda *args:None)
+        server.RequestHandlerClass=handler(self.workspace,dist,server.server_port)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        base=f'http://127.0.0.1:{server.server_port}'
+        def fetch(path,method='GET',data=None,headers=None):
+            req=Request(base+path,method=method,headers=headers or {},data=json.dumps(data).encode() if data is not None else None)
+            with urlopen(req,timeout=3) as response:return response.read().decode()
+        try:
+            session=fetch('/api/session');self.assertNotIn('private-human-token',session);self.assertNotIn('private-worker-token',session)
+            for path,method,data,headers in [('/api/session','GET',None,{'Host':'evil.invalid'}),
+                ('/api/rooms','POST',{'name':'room','operation':'operation-id'},{}),
+                ('/api/rooms','POST',{'name':'room','operation':'operation-id'},{'X-CSRF-Token':self.workspace.csrf,'Origin':'https://evil.invalid'}),
+                ('/%2e%2e/secret','GET',None,{})]:
+                with self.assertRaises(HTTPError) as caught:fetch(path,method,data,headers)
+                self.assertEqual(caught.exception.code,403)
+            result=json.loads(fetch('/api/rooms','POST',{'name':'room','operation':'operation-id'},{'X-CSRF-Token':self.workspace.csrf}))
+            self.assertEqual(result['room_id'],'!created:local')
+        finally:server.shutdown();server.server_close();thread.join()
+
+    def test_external_backends_are_rejected(self):
+        with self.assertRaises(ValueError):Workspace({'room':'!seed','tokens':['x']},'x',self.root/'unused.git',self.root/'db','https://matrix.example','http://127.0.0.1:9001')
