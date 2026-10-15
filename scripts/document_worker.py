@@ -2,9 +2,9 @@
 import argparse
 import os
 from pathlib import Path
-import time
 
 from scripts.agent_worker import render as echo
+from scripts.agent_worker import run_loop
 from src.gitdocs import Conflict, GitDocs, InvalidPath, PublicationPending
 from src.matrix_http import request
 
@@ -78,8 +78,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     token = Path(args.token_file).read_text().strip()
     store = GitDocs(args.repo)
-    while True:
+    if args.once:
         once(args.url, token, store, args.crash_after_commit)
-        if args.once:
-            break
-        time.sleep(1)
+    else:
+        run_loop(lambda: once(args.url, token, store, args.crash_after_commit), delay=1)
