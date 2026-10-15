@@ -69,7 +69,7 @@ services:
     volumes:
       - ./scripts:/app/scripts:ro
       - ./src:/app/src:ro
-      - config:/config:ro
+      - config:/config
     depends_on:
       synapse:
         condition: service_healthy
