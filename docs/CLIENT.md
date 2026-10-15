@@ -49,3 +49,9 @@ CI also starts the adapter and an independent document worker against real Synap
 ## Remaining scope
 
 Production login/tenant grants, real model runtimes, E2EE, multiple document creation/tree operations, per-room document ACLs, realtime collaborative rich editing, durable task views across browser sessions, full-text search, room administration, network Git remotes and public deployment remain outside this milestone. Search filters the small real local navigation list; it is not a full-text index. The SDK bundles its optional crypto artifacts but this demo does not initialize crypto or claim E2EE. Bundle size tuning and full accessibility certification are not claimed.
+
+## Synthetic hosted UI preview
+
+Build with `VITE_PREVIEW_MODE=synthetic npm --prefix client run build -- --outDir ../.local/vercel-preview`. Upload only that isolated static output. The explicit preview banner identifies browser-only sample data. It uses localStorage for document snapshots, rooms, messages and deterministic example replies; it makes no backend requests. It does not connect Matrix, Git, a remote runtime or an LLM. The normal build retains the real loopback backend.
+
+An anonymous Vercel temporary deployment expires after approximately one hour. It requires no persistent login credentials. A durable hosted environment with a real backend remains separate work.
