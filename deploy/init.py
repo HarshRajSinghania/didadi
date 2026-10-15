@@ -43,3 +43,6 @@ def initialize(root):
 
 if __name__ == '__main__':
     initialize(Path(os.environ.get('CONFIG_DIR', '/config')))
+
+    # The Synapse image drops to 991:991 but does not chown an existing data volume.
+    os.chown('/synapse-data', 991, 991)

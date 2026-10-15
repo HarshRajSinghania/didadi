@@ -6,6 +6,7 @@ services:
     volumes:
       - ./deploy:/app/deploy:ro
       - config:/config
+      - synapse:/synapse-data
   postgres:
     image: postgres:16.10-bookworm
     environment:
