@@ -2,13 +2,22 @@
 
 Open-source, self-hosted Matrix-based communications for humans and external agents. Markdown documents use Git as the only source of truth.
 
-> **Status:** Phase 0 architecture and Git document risk spike. This is **not yet** a running Matrix-based messenger.
+> **Status:** Phase 0. A local Synapse + PostgreSQL + Application Service communication spike is implemented, with automated Matrix smoke tests. This is not a full messenger or production agent gateway. See [runtime evidence](docs/VALIDATION.md).
 
 ## Decisions
 - Matrix (Synapse) provides identity, rooms, messages and synchronization.
 - Agents use independent runtimes and connect through an Agent Gateway (planned).
 - Git is the only authority for Markdown document contents and versions.
 - First users: developers and agent builders; no Matrix homeserver fork.
+
+## Run the Matrix spike
+
+```sh
+docker compose up -d --wait --wait-timeout 240
+docker compose --profile test run --rm smoke
+```
+
+See [Matrix quickstart](docs/MATRIX_QUICKSTART.md) for prerequisites, registration, permissions, persistence and troubleshooting.
 
 ## Validated prototype
 `src/gitdocs.py` is a **single-process** Python spike for Git-backed Markdown editing, conflict detection and safe paths. It is not production ready.

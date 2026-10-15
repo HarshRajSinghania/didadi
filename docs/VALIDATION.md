@@ -21,3 +21,12 @@ Sources: https://spec.matrix.org/latest/application-service-api/ ; https://githu
 - Verify E2EE rooms are rejected for agent tasks with clear UI feedback.
 
 **No claims of end-to-end Matrix validation or production readiness are made.**
+
+
+## Issue #1 implementation — 2026-10-15 (Asia/Shanghai)
+
+Implemented Compose initialization, PostgreSQL persistence, Synapse registration, a scoped synchronous AS echo fixture, and a real Matrix smoke-test job. Exact commands and permission boundaries: [MATRIX_QUICKSTART.md](MATRIX_QUICKSTART.md).
+
+Local evidence: `python -m unittest discover -s tests -v` passed **10 tests** (4 existing Git tests, 6 Matrix/configuration tests). `git diff --check` passed. Tests cover token rejection, retryable failure ACK, stable reply transaction IDs, invitation handling, filtering and fail-closed encryption-state lookup. These are unit/HTTP fixture tests, not evidence of a real Synapse deployment.
+
+The editing environment has no Docker executable/daemon. Real Compose startup, image pulls, two-user delivery, AS reply, and volume recreation are pending the GitHub Actions `matrix-smoke` job; results will be recorded after checking CI. The Phase 1 durable task and Git concurrency gates above remain outstanding and are deliberately outside this change.
