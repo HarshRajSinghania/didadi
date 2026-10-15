@@ -18,7 +18,7 @@ python3 -m src.client_server --state-file .local/smoke-state.json \
 
 Open **http://127.0.0.1:8767**. When using another checkout, point the file arguments to the existing document demo's private state/token/bare-repository files. Do not copy credentials into the frontend. This task's preview reuses `../didadi-docs/.local/` and leaves the older `8765/8766` servers and their data running.
 
-The default screen is a document, not a message dashboard. The left sidebar contains the one real granted document and real allowed rooms. Read renders Markdown safely; Edit opens a working Markdown toolbar/source editor. Save sends a Matrix task and waits for the external example runtime to commit to Git. History opens fixed commit snapshots; a stale edit shows a conflict and preserves the draft until the user explicitly loads the latest version.
+The default screen is a document, not a message dashboard. The left sidebar contains the one real granted document and real allowed rooms. Read renders Markdown safely; Edit opens a Milkdown Crepe block editor with direct body editing, slash insertion, task lists, code blocks, drag handles and undo/redo. Save sends a Matrix task and waits for the external example runtime to commit to Git. History opens fixed commit snapshots; a stale edit shows a conflict and preserves the draft until the user explicitly loads the latest version.
 
 Discussion and Example Agent are optional right panels. The example is labeled deterministic echo/no LLM. Room messages, thread replies and task completion are real. Version receipts and task IDs are collapsed in details. No fake multi-document tree, unimplemented sharing buttons, rich collaboration cursors or intelligent edits are shown.
 
@@ -55,3 +55,11 @@ Production login/tenant grants, real model runtimes, E2EE, multiple document cre
 Build with `VITE_PREVIEW_MODE=synthetic npm --prefix client run build -- --outDir ../.local/vercel-preview`. Upload only that isolated static output. The explicit preview banner identifies browser-only sample data. It uses localStorage for document snapshots, rooms, messages and deterministic example replies; it makes no backend requests. It does not connect Matrix, Git, a remote runtime or an LLM. The normal build retains the real loopback backend.
 
 An anonymous Vercel temporary deployment expires after approximately one hour. It requires no persistent login credentials. A durable hosted environment with a real backend remains separate work.
+
+## Block editor scope
+
+Milkdown Crepe 7.22.3 uses the MIT license. Its ProseMirror/Remark editing state is transient; saves still send Markdown through the existing Matrix/Agent/Git pipeline. Supported blocks are paragraphs, headings, bullet/ordered/task lists, quotes, code fences and dividers, with ordinary inline Markdown. Block actions duplicate, delete and move top-level blocks; lists move together. Crepe provides native dragging and slash insertion. Reading mode renders GFM tasks without enabling editing.
+
+Unsupported initial source (including HTML, tables, images, definitions and code metadata) opens in an explicitly labeled source fallback. This prevents silent conversion loss. Databases, embedded pages, uploads and arbitrary rich blocks are not supported. Editing may normalize Markdown whitespace, bullets and fences; untouched source remains byte-preserved. The Git blob comparison, immutable history and retained recovery draft continue to protect concurrent saves.
+
+Tests use real Milkdown for semantic block round-trip, direct editor changes, block commands, undo/redo, composition events and destruction safety. App workflow tests isolate the editor behind its Markdown interface. Synthetic composition events and Chinese text/paste checks do not establish compatibility with every physical OS IME.

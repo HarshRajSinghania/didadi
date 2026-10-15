@@ -2,6 +2,7 @@ import React from 'react';
 import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {describe,it,expect,vi} from 'vitest';
 vi.mock('./api',()=>({connect:vi.fn(),errorText:error=>error.message}));
+vi.mock('./BlockEditor',()=>({BlockEditor:React.forwardRef(function TestEditor({value,onChange,disabled},ref){React.useImperativeHandle(ref,()=>({markdown:()=>value}));return <textarea aria-label="Markdown document" disabled={disabled} value={value} onChange={e=>onChange(e.target.value)}/>})}));
 import {App,Composer,Documents} from './App';
 const doc={name:'demo.md',content:'# Team handbook\n\nA real document.',blob:'a'.repeat(40),commit:'b'.repeat(40)};
 function fixture(){return {session:{agentId:'@agent',userId:'@user:local',initialRoom:'!room'},
@@ -64,10 +65,6 @@ describe('editing and navigation regressions',()=>{
     const view=render(<Composer {...props} busyRoom="!one"/>);fireEvent.change(screen.getByLabelText('Message'),{target:{value:'room one draft'}});
     view.rerender(<Composer {...props} busyRoom="!two"/>);expect(screen.getByLabelText('Message')).toHaveValue('');
     view.rerender(<Composer {...props} busyRoom="!one"/>);expect(screen.getByLabelText('Message')).toHaveValue('room one draft');
-  });
-  it('formatting buttons actually modify selected Markdown',async()=>{const api=fixture();render(<Documents api={api} room="!room" onSent={idle} mode="edit"/>);
-    const input=await screen.findByLabelText('Markdown document');input.setSelectionRange(2,6);fireEvent.click(screen.getByRole('button',{name:'Bold',exact:true}));
-    expect(input.value).toContain('# **Team** handbook');
   });
   it('does not create two document operations on repeated save clicks',async()=>{const api=fixture();let resolve;api.send.mockImplementation(()=>new Promise(r=>resolve=r));
     render(<Documents api={api} room="!room" onSent={idle} mode="edit"/>);await screen.findByLabelText('Markdown document');
