@@ -211,6 +211,13 @@ class GitDocs:
                 self._publish()
                 return previous
             self._sync()
+            # Synchronization can import an operation completed by another store.
+            previous = self._operation(opref)
+            if previous:
+                if previous['request_hash'] != request_hash:
+                    raise Conflict('operation ID reused with different request')
+                self._publish()
+                return previous
             head = self._ref(self.branch)
             if self._version(name, head) != base_blob:
                 raise Conflict('document changed; refresh and merge')

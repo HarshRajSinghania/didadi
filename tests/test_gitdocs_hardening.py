@@ -81,6 +81,24 @@ class GitDocsHardeningTests(unittest.TestCase):
         self.assertEqual(sent, ['matrix-event'])
         self.assertEqual(restored.pending(), [])
 
+    def test_remote_sync_recovers_identical_operation_and_rejects_changed_request(self):
+        remote = self.root / 'remote.git'
+        GitDocs(remote)
+        first = GitDocs(self.root / 'first.git', remote)
+        retrying = GitDocs(self.root / 'retrying.git', remote)
+        changed = GitDocs(self.root / 'changed.git', remote)
+        notification = {'task_id': 'same-event'}
+        original = first.write('demo.md', 'saved', operation='same-event',
+                               notification=notification)
+        recovered = retrying.write('demo.md', 'saved', operation='same-event',
+                                   notification=notification)
+        self.assertEqual(recovered['commit'], original['commit'])
+        self.assertEqual(len(retrying.history('demo.md')), 1)
+        with self.assertRaisesRegex(Conflict, 'operation ID reused with different request'):
+            changed.write('demo.md', 'changed', operation='same-event',
+                          notification=notification)
+        self.assertEqual(changed.read('demo.md'), 'saved')
+
     def test_remote_fast_forward_and_stale_blob_rejection(self):
         remote = self.root / 'remote.git'
         GitDocs(remote)
