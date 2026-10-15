@@ -30,7 +30,7 @@ services:
     environment:
       SYNAPSE_CONFIG_PATH: /config/homeserver.yaml
     ports:
-      - '127.0.0.1:8008:8008'
+      - '127.0.0.1:${MATRIX_HTTP_PORT:-8008}:8008'
     volumes:
       - config:/config:ro
       - synapse:/data
@@ -55,7 +55,7 @@ services:
       - config:/config:ro
       - gateway:/gateway
     ports:
-      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:${GATEWAY_HTTP_PORT:-9000}:9000'
     depends_on:
       init:
         condition: service_completed_successfully

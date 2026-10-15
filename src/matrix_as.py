@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from src.matrix_http import MatrixError, request, segment
 
@@ -76,6 +76,11 @@ def make_handler(agent, hs_token, gateway=None, agent_token=None):
                 if not self.agent_auth():
                     return
                 self.respond(200, {'task': gateway.claim()})
+            elif urlsplit(self.path).path == '/agent/status':
+                if not self.agent_auth():
+                    return
+                task_id = parse_qs(urlsplit(self.path).query).get('id', [''])[0]
+                self.respond(200, {'task': gateway.status(task_id)})
             elif self.path == '/health':
                 self.respond(200, {'status': 'ok'})
             else:

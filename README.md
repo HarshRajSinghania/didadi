@@ -21,8 +21,8 @@ See [Agent gateway and interactive local preview](docs/AGENT_GATEWAY.md) for str
 
 See [Matrix quickstart](docs/MATRIX_QUICKSTART.md) for prerequisites, registration, permissions, persistence and troubleshooting.
 
-## Validated prototype
-`src/gitdocs.py` is a **single-process** Python spike for Git-backed Markdown editing, conflict detection and safe paths. It is not production ready.
+## Git document loop
+See [Git documents and local editor](docs/GIT_DOCUMENTS.md) for the Matrix → external runtime → Git → thread demo. `src/gitdocs.py` uses a dedicated bare repository, cross-process locks, blob/branch comparisons and a Git-backed notification outbox. It remains a single-host development spike, not a production API.
 
 Requirements: Python 3.11+ and Git on PATH.
 
