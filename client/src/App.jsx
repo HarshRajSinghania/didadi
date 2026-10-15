@@ -38,17 +38,17 @@ export function Composer({onSend, busyRoom, agentId, replyTo, clearReply, onSent
 export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpen=false,onCloseHistory=()=>{},onMeta=()=>{}}) {
   const [snapshot,setSnapshot]=useState(null),[draft,setDraft]=useState(''),[history,setHistory]=useState([]);
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[historical,setHistorical]=useState(false);
-  const [pending,setPending]=useState(null),[conflict,setConflict]=useState(false);
+  const [pending,setPending]=useState(null),[conflict,setConflict]=useState(false),[recoveryDraft,setRecoveryDraft]=useState(null);
   const lock=useRef(false),attempt=useRef(null), mounted=useRef(true),loadSequence=useRef(0);
   const [reading,setReading]=useState(false);
   const editor=useRef(null);
   const title=snapshot?(draft.match(/^# +(.+)$/m)?.[1]||'Untitled document'):'demo.md';
   useEffect(()=>onMeta({title,dirty:Boolean(snapshot&&draft!==(snapshot.content||'')),busy,historical}),[title,draft,snapshot,busy,historical]);
   const roomRef=useRef(room);roomRef.current=room;
-  async function load(commit) {
+  async function load(commit, preserveDraft=false) {
     const sequence=++loadSequence.current;setReading(true);setError('');
     try {const [doc,versions]=await Promise.all([api.document(roomRef.current,commit),api.history(roomRef.current)]);
-      if(!mounted.current||sequence!==loadSequence.current)return;setSnapshot(doc);setDraft(doc.content||'');setHistory(versions.commits);setHistorical(Boolean(commit));setConflict(false);setNotice('');}
+      if(!mounted.current||sequence!==loadSequence.current)return;if(preserveDraft&&draft!==(snapshot?.content||''))setRecoveryDraft(draft);setSnapshot(doc);setDraft(doc.content||'');setHistory(versions.commits);setHistorical(Boolean(commit));setConflict(false);setNotice('');}
     catch(e){if(sequence===loadSequence.current)setError(errorText(e));}
     finally{if(sequence===loadSequence.current)setReading(false);}
   }
@@ -61,9 +61,9 @@ export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpe
         if(!cancelled&&result.task?.status==='done'){
           setPending(null);setBusy(false);lock.current=false;
           const body=result.task.body||'';
-          if(body.startsWith('Document conflict:')){setConflict(true);setError('A newer Git version exists. Your edits are preserved. Load latest to merge.');}
+          if(body.startsWith('Document conflict:')){setConflict(true);setError('A newer document version exists. Your edits are preserved. Load latest to merge.');}
           else if(body.startsWith('Document request rejected:'))setError(body);
-          else {await load();setNotice(body.startsWith('Saved')?'Saved to Git. The Agent posted a version receipt in the room.':'Agent read the Git version. See the room timeline.');}
+          else {if(body.startsWith('Saved'))setRecoveryDraft(null);await load(undefined,!body.startsWith('Saved'));setNotice(body.startsWith('Saved')?(api.session.synthetic?'Saved in this browser. No Git backend is connected.':'Saved to Git. The Agent posted a version receipt in the room.'):(api.session.synthetic?'Example Agent read the browser snapshot.':'Agent read the Git version. See the room timeline.'));}
         }
       }catch(e){if(!cancelled)setError(errorText(e)+' Waiting to reconnect; your draft is kept.');}
       finally{checking=false;}}
@@ -92,21 +92,22 @@ export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpe
       {!snapshot?(error?'Document unavailable':'Loading document…'):reading?'Loading version…':historical?<><History size={14}/> Historical version</>:busy?<><RefreshCw size={14} className="spin"/> Saving through example Agent…</>:dirty?'Unsaved changes':<><Check size={14}/> All changes saved</>}</span>
       <div>{mode==='edit'&&<button className="primary compact" onClick={()=>submit('write')} disabled={busy||reading||!snapshot}>Save changes</button>}</div>
     </div>
-    {historical&&<div className="state-banner historical-banner"><History size={17}/><span>You’re viewing an earlier version. Editing it may return a conflict.</span><button onClick={()=>load()}>Back to latest</button></div>}
-    {error&&<div className="state-banner warning" role="alert"><AlertCircle size={18}/><div><strong>{conflict?'This document has a newer version':'Couldn’t complete the request'}</strong><p>{error}</p></div>{conflict?<button onClick={()=>load()}>Load latest to merge</button>:<button onClick={()=>snapshot?submit('write'):load()}>Retry</button>}</div>}
+    {historical&&<div className="state-banner historical-banner"><History size={17}/><span>You’re viewing an earlier version. Editing it may return a conflict.</span><button onClick={()=>load(undefined,true)}>Back to latest</button></div>}
+    {error&&<div className="state-banner warning" role="alert"><AlertCircle size={18}/><div><strong>{conflict?'This document has a newer version':'Couldn’t complete the request'}</strong><p>{error}</p></div>{conflict?<button onClick={()=>load(undefined,true)}>Load latest to merge</button>:<button onClick={()=>snapshot?submit('write'):load()}>Retry</button>}</div>}
     {notice&&<div className="state-banner success" role="status"><Check size={17}/><span>{notice}</span></div>}
     {pending&&<p className="quiet-status" role="status">Your request is queued. The example runtime will post the result in the room.</p>}
+    {recoveryDraft!==null&&<div className="state-banner warning"><div><strong>Your previous draft is preserved</strong><p>Compare it with the latest version below, then merge your changes.</p><textarea aria-label="Preserved draft" readOnly value={recoveryDraft}/></div><button onClick={()=>{setDraft(recoveryDraft);setMode('edit')}}>Restore previous draft</button></div>}
     <div className="document-scroll"><div className="document-page">
       {snapshot?<><div className="page-eyebrow"><FileText size={16}/><span>Workspace document</span></div><h1 className="document-title">{title}</h1>
-        <div className="page-byline"><span className="tiny-avatar">D</span><span>Shared workspace</span><span className="byline-dot"/><span>Stored in Git</span></div>
+        <div className="page-byline"><span className="tiny-avatar">D</span><span>Shared workspace</span><span className="byline-dot"/><span>{api.session.synthetic?'Browser-only snapshot':'Stored in Git'}</span></div>
         {mode==='edit'?<><div className="editor-toolbar" aria-label="Markdown formatting"><button aria-label="Heading" onClick={()=>format('## ','')}><Heading2 size={17}/></button><button aria-label="Bold" onClick={()=>format('**')}><Bold size={16}/></button><button aria-label="Italic" onClick={()=>format('*')}><Italic size={16}/></button><span/><button aria-label="List" onClick={()=>format('- ','')}><List size={17}/></button><button aria-label="Inline code" onClick={()=>format('`')}><Code2 size={17}/></button><span className="toolbar-label">Markdown</span></div>
           <label htmlFor="markdown" className="sr-only">Markdown document</label><textarea ref={editor} id="markdown" className="source-editor" spellCheck="false" value={draft} onChange={e=>setDraft(e.target.value)} maxLength={6000} disabled={busy||reading}/>
-          <div className="editor-foot"><span>{draft.length} / 6000 characters</span><button onClick={()=>load()} disabled={busy}>Load latest</button></div>
+          <div className="editor-foot"><span>{draft.length} / 6000 characters</span><button onClick={()=>load(undefined,true)} disabled={busy}>Load latest</button></div>
         </>:<div className="markdown-body">{draft?<ReactMarkdown>{bodyMarkdown}</ReactMarkdown>:<div className="empty-document"><p>A quiet space for your first document.</p><button className="primary" onClick={()=>setMode('edit')}>Start writing</button></div>}</div>}
         <div className="document-bottom"><span><BookOpen size={14}/> demo.md</span><button onClick={()=>submit('read')} disabled={busy}>Ask example Agent to read</button></div>
       </>:error?<div className="document-unavailable"><FileText size={30}/><h2>This document is temporarily unavailable</h2><p>Your workspace is still open. Retry above to load the document.</p></div>:<div className="document-skeleton" role="status" aria-label="Loading document"><div/><div/><div/><div/><p>Loading document…</p></div>}
     </div></div>
-    {historyOpen&&<aside className="history-panel" aria-label="Version history"><header><h2>Version history</h2><button aria-label="Close history" onClick={onCloseHistory}><X size={17}/></button></header><p>Every version is a fixed Git snapshot.</p>{history.length?history.map((commit,i)=><button className="history-row" key={commit} onClick={()=>load(commit)} disabled={busy||reading}><span className="version-dot"/><div><strong>{i===0?'Current version':'Previous version'}</strong><code>{short(commit)}</code></div><ChevronRight size={15}/></button>):<div className="panel-empty">Your first save creates the first version.</div>}</aside>}
+    {historyOpen&&<aside className="history-panel" aria-label="Version history"><header><h2>Version history</h2><button aria-label="Close history" onClick={onCloseHistory}><X size={17}/></button></header><p>{api.session.synthetic?'Sample snapshots stored in this browser.':'Every version is a fixed Git snapshot.'}</p>{history.length?history.map((commit,i)=><button className="history-row" key={commit} onClick={()=>load(commit,true)} disabled={busy||reading}><span className="version-dot"/><div><strong>{i===0?'Current version':'Previous version'}</strong><code>{short(commit)}</code></div><ChevronRight size={15}/></button>):<div className="panel-empty">Your first save creates the first version.</div>}</aside>}
   </section>;
 }
 
@@ -149,8 +150,8 @@ export function App({connector=connect}) {
   if(!api)return <main className="startup"><BookOpen size={30}/><h1>Didadi</h1><p>{error||'Opening your workspace…'}</p>{error&&<button className="primary" onClick={start}>Retry connection</button>}<span>Local workspace · example Agent, no LLM</span></main>;
   const selected=rooms.find(r=>r.id===room);
   const displayed=events.filter(e=>!filter||e.id===filter||e.content['m.relates_to']?.event_id===filter);
-  return <div className="workspace"><aside className={'sidebar '+(navOpen?'nav-open':'')}>
-    <div className="workspace-switch"><span className="workspace-logo"><BookOpen size={19}/></span><strong>Didadi</strong><ChevronDown size={15}/><span className="local-pill">Local</span></div>
+  return <>{api.session.synthetic&&<div className="preview-banner" role="note">Interactive UI preview · synthetic browser-only data · no Matrix/Git backend or LLM</div>}<div className="workspace"><aside className={'sidebar '+(navOpen?'nav-open':'')}>
+    <div className="workspace-switch"><span className="workspace-logo"><BookOpen size={19}/></span><strong>Didadi</strong><ChevronDown size={15}/><span className="local-pill">{api.session.synthetic?'Preview':'Local'}</span></div>
     <div className="workspace-search"><Search size={16}/><input ref={searchRef} aria-label="Search workspace" placeholder="Search workspace" value={search} onChange={e=>setSearch(e.target.value)}/></div>
     <div className="nav-section"><div className="section-heading"><span>Documents</span><span className="count">1</span></div>
       <button className="tree-collection" onClick={()=>{setMode('read');setNavOpen(false)}}><ChevronDown size={14}/><BookOpen size={16}/><span>Workspace</span></button>
@@ -161,7 +162,7 @@ export function App({connector=connect}) {
       <nav aria-label="Rooms">{rooms.filter(r=>r.name.toLowerCase().includes(search.toLowerCase())).map(r=><button className={'room '+(r.id===room?'room-selected':'')} key={r.id} onClick={()=>{setRoom(r.id);setNavOpen(false)}}><MessageSquare size={15}/><span>{r.name}</span></button>)}</nav>
       <form className="new-room" onSubmit={createRoom}><input aria-label="New local room name" value={newName} onChange={e=>setNewName(e.target.value)} placeholder="New local room" maxLength={60} disabled={creating}/><button disabled={creating||!newName.trim()} aria-label="Create local room"><Plus size={16}/></button></form>
     </div>
-    <div className="sidebar-bottom"><button className="agent-nav" onClick={()=>setPanel('agent')}><Bot size={17}/><span>Example Agent<small>Echo runtime · no LLM</small></span><span className="available-dot"/></button><div className="session-note"><span className={'available-dot '+(!online?'offline':'')}/>{online?'Connected to local workspace':'Reconnecting to workspace'}</div></div>
+    <div className="sidebar-bottom"><button className="agent-nav" onClick={()=>setPanel('agent')}><Bot size={17}/><span>Example Agent<small>Echo runtime · no LLM</small></span><span className="available-dot"/></button><div className="session-note"><span className={'available-dot '+(!online?'offline':'')}/>{online?(api.session.synthetic?'Browser-only preview':'Connected to local workspace'):'Reconnecting to workspace'}</div></div>
   </aside>
   <main className="main"><header className="workspace-header"><button className="mobile-nav" aria-label="Toggle navigation" onClick={()=>setNavOpen(!navOpen)}><BookOpen size={18}/></button><div className="breadcrumbs"><BookOpen size={15}/><span>Workspace</span><ChevronRight size={13}/><strong>demo.md</strong></div><div className="header-actions"><div className="mode-switch"><button aria-pressed={mode==='read'} onClick={()=>setMode('read')}>Read</button><button aria-pressed={mode==='edit'} onClick={()=>setMode('edit')}>Edit</button></div><span className="header-divider"/><button className={historyOpen?'active':''} aria-label="Version history" onClick={()=>setHistoryOpen(!historyOpen)}><History size={17}/></button><button className={panel==='discussion'?'active':''} onClick={()=>setPanel(panel==='discussion'?null:'discussion')}><MessageSquare size={17}/><span>Discussion</span></button><button className={panel==='agent'?'active':''} onClick={()=>setPanel(panel==='agent'?null:'agent')}><Bot size={17}/><span>Agent</span></button></div></header>
     {api.session.qa&&<div className="qa-banner">Visual regression capture · {api.session.qa} · isolated adapter</div>}
@@ -181,5 +182,5 @@ export function App({connector=connect}) {
         <Composer busyRoom={room} agentId={api.session.agentId} onSend={(content,id)=>api.send(room,content,id)} onSent={sent} replyTo={replyTo} clearReply={()=>setReplyTo(null)} defaultMention={panel==='agent'}/>
       </aside>
     </div>
-  </main></div>;
+  </main></div></>;
 }

@@ -5,6 +5,7 @@ export function errorText(error) {
 }
 
 export async function connect() {
+  if(import.meta.env.VITE_PREVIEW_MODE==='synthetic')return (await import('./demo-api')).createDemo();
   const sessionResponse = await fetch('/api/session');
   if (!sessionResponse.ok) throw new Error('Cannot reach the local workspace. Check that the backend is running.');
   const session = await sessionResponse.json();
