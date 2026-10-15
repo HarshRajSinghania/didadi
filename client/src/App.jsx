@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {connect, errorText} from './api';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {BlockEditor} from './BlockEditor';
 import {BookOpen, Search, ChevronDown, ChevronRight, FileText, MessageSquare, Bot, History, Plus, ArrowUp, X, Check, AlertCircle, RefreshCw, Bold, Italic, Heading2, List, Code2} from 'lucide-react';
 const short = value => value?.slice(0,10) || 'not created';
@@ -102,7 +103,7 @@ export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpe
         <div className="page-byline"><span className="tiny-avatar">D</span><span>Shared workspace</span><span className="byline-dot"/><span>{api.session.synthetic?'Browser-only snapshot':'Stored in Git'}</span></div>
         {mode==='edit'?<><BlockEditor key={editorRevision} ref={editor} value={draft} onChange={setDraft} onComposingChange={setComposing} disabled={busy||reading}/>
           <div className="editor-foot"><span>{draft.length} / 6000 characters · Markdown-backed blocks</span><button onClick={()=>load(undefined,true)} disabled={busy}>Load latest</button></div>
-        </>:<div className="markdown-body">{draft?<ReactMarkdown>{bodyMarkdown}</ReactMarkdown>:<div className="empty-document"><p>A quiet space for your first document.</p><button className="primary" onClick={()=>setMode('edit')}>Start writing</button></div>}</div>}
+        </>:<div className="markdown-body">{draft?<ReactMarkdown remarkPlugins={[remarkGfm]}>{bodyMarkdown}</ReactMarkdown>:<div className="empty-document"><p>A quiet space for your first document.</p><button className="primary" onClick={()=>setMode('edit')}>Start writing</button></div>}</div>}
         <div className="document-bottom"><span><BookOpen size={14}/> demo.md</span><button onClick={()=>submit('read')} disabled={busy}>Ask example Agent to read</button></div>
       </>:error?<div className="document-unavailable"><FileText size={30}/><h2>This document is temporarily unavailable</h2><p>Your workspace is still open. Retry above to load the document.</p></div>:<div className="document-skeleton" role="status" aria-label="Loading document"><div/><div/><div/><div/><p>Loading document…</p></div>}
     </div></div>
