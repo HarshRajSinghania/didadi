@@ -64,6 +64,11 @@ class Gateway:
                            (event['event_id'], json.dumps(event)))
             db.execute('INSERT OR IGNORE INTO transactions VALUES (?)', (txn,))
 
+    def status(self, task_id):
+        with self.db() as db:
+            row = db.execute('SELECT status,reply FROM tasks WHERE id=?', (task_id,)).fetchone()
+            return dict(row) if row else None
+
     def claim(self):
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')

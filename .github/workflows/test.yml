@@ -36,6 +36,14 @@ jobs:
           docker compose up -d --wait --wait-timeout 240
           docker compose --profile test run --rm smoke python -u -m scripts.matrix_smoke --check-persistence
           docker compose --profile test run --rm smoke
+      - name: Real Matrix Git document loop and worker crash recovery
+        run: |
+          mkdir -p .local
+          chmod 700 .local
+          docker compose cp appservice:/config/agent-token .local/agent-token
+          docker compose cp appservice:/config/smoke-state.json .local/smoke-state.json
+          chmod 600 .local/*
+          python3 -m scripts.document_smoke --state-file .local/smoke-state.json --token-file .local/agent-token --repo .local/documents.git
       - name: Diagnostics
         if: failure()
         run: |

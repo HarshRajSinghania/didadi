@@ -16,7 +16,8 @@ Web / Desktop clients ── Matrix Client API ── Synapse ── PostgreSQL
 ## Ownership
 - Matrix is authoritative for rooms, messaging and membership.
 - Git is authoritative for Markdown content and version history.
-- Platform metadata DB stores tasks, agent registration, grants, audit and retry/outbox records.
+- Platform metadata DB stores tasks, agent registration, grants, audit and task retry records.
+- The local Git document spike stores document notification intent in commit metadata and notification receipts in local Git refs. See `GIT_DOCUMENTS.md`.
 - Runtime owns model state and execution environment.
 
 ## Protocol guardrails
