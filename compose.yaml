@@ -53,6 +53,9 @@ services:
     volumes:
       - ./src:/app/src:ro
       - config:/config:ro
+      - gateway:/gateway
+    ports:
+      - '127.0.0.1:9000:9000'
     depends_on:
       init:
         condition: service_completed_successfully
@@ -77,3 +80,4 @@ volumes:
   config:
   postgres:
   synapse:
+  gateway:

@@ -11,6 +11,9 @@ def initialize(root):
     if not secret_file.exists():
         secret_file.write_text(json.dumps({k: secrets.token_hex(32) for k in
             ('as_token', 'hs_token', 'registration', 'postgres', 'macaroon')}))
+    agent_token = root / 'agent-token'
+    if not agent_token.exists():
+        agent_token.write_text(secrets.token_hex(32))
     s = json.loads(secret_file.read_text())
     (root / 'postgres-password').write_text(s['postgres'])
     registration = {

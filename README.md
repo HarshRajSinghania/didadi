@@ -2,7 +2,7 @@
 
 Open-source, self-hosted Matrix-based communications for humans and external agents. Markdown documents use Git as the only source of truth.
 
-> **Status:** Phase 0. A local Synapse + PostgreSQL + Application Service communication spike is implemented, with automated Matrix smoke tests. This is not a full messenger or production agent gateway. See [runtime evidence](docs/VALIDATION.md).
+> **Status:** Phase 0. A local Synapse + PostgreSQL + Application Service communication spike is implemented, with automated Matrix smoke tests and a single-node durable external-agent gateway spike. This is not a full messenger or production agent gateway. See [runtime evidence](docs/VALIDATION.md).
 
 ## Decisions
 - Matrix (Synapse) provides identity, rooms, messages and synchronization.
@@ -16,6 +16,8 @@ Open-source, self-hosted Matrix-based communications for humans and external age
 docker compose up -d --wait --wait-timeout 240
 docker compose --profile test run --rm smoke
 ```
+
+See [Agent gateway and interactive local preview](docs/AGENT_GATEWAY.md) for structured mentions, durable tasks and an outbound example runtime.
 
 See [Matrix quickstart](docs/MATRIX_QUICKSTART.md) for prerequisites, registration, permissions, persistence and troubleshooting.
 
