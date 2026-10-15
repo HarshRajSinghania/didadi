@@ -37,7 +37,7 @@ def serve(state, worker_token, port=8765):
             try:
                 events = api('GET', room + '/messages', query={'dir': 'b', 'limit': 50})['chunk']
                 rows = []
-                for event in reversed(events):
+                for event in events:
                     if event['type'] != 'm.room.message':
                         continue
                     content = event['content']
@@ -49,11 +49,11 @@ def serve(state, worker_token, port=8765):
 body{font:16px system-ui;background:#101722;color:#e1e9f2;max-width:860px;margin:45px auto;padding:0 24px}
 h1{font-size:42px;margin-bottom:8px}small{color:#83ddc6;letter-spacing:2px}p{line-height:1.6;white-space:pre-wrap}
 article{background:#1b2738;padding:18px 24px;border-radius:14px;margin:14px 0}code{font-size:11px;color:#93a5bb;overflow-wrap:anywhere}
-input{width:70%;padding:15px;border-radius:8px;border:0}button{padding:15px;border:0;border-radius:8px;background:#83ddc6}
-a{color:#83ddc6}.note{color:#a8b8cb}form{margin:30px 0}</style>
+input{flex:1;min-width:180px;padding:15px;border-radius:8px;border:0}button{padding:15px;border:0;border-radius:8px;background:#83ddc6}
+a{color:#83ddc6}.note{color:#a8b8cb}form{margin:30px 0;display:flex;gap:10px;flex-wrap:wrap}</style>
 <small>DIDADI / LOCAL DEVELOPMENT</small><h1>A message. A durable task.<br>An external agent reply.</h1>
-<p class="note">Live Matrix timeline · SQLite task ledger · independent polling runtime<br>Deterministic example agent; no LLM or document writes.</p>
-<form method="post"><input name="body" placeholder="Ask the example agent…" required maxlength="4000">
+<p class="note">Live Matrix timeline (newest first) · SQLite task ledger · independent polling runtime<br>Deterministic example agent; no LLM or document writes.</p>
+<form method="post"><input aria-label="Message to external agent" name="body" placeholder="Ask the example agent…" required maxlength="4000">
 <input type="hidden" name="csrf" value="''' + csrf + '''"><button>Send to agent</button></form>
 <p><a href="/">Refresh timeline ↻</a></p>''' + ''.join(rows) + '</html>'
                 self.send_response(200)
