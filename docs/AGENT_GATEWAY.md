@@ -1,0 +1,57 @@
+# Durable external agent spike (Issue #2)
+
+This single-node development milestone builds on the Phase 0 Matrix stack. An explicitly invited managed identity receives structured mentions, the gateway commits transaction IDs and task event IDs to SQLite before ACK, and an independent runtime polls outbound with a separate credential. The runtime does not receive a homeserver or Application Service token.
+
+## Run
+
+```sh
+docker compose -p didadi-gateway up -d --wait --wait-timeout 240
+docker compose -p didadi-gateway --profile test run --rm smoke
+```
+
+The smoke creates a private, unencrypted room, invites the managed identity, sends a structured `m.mentions.user_ids` mention, runs the external example worker, verifies its Matrix thread reply and replays the original event under repeated and different transaction IDs. A pending real event is left for the restart test:
+
+```sh
+docker compose -p didadi-gateway down
+docker compose -p didadi-gateway up -d --wait --wait-timeout 240
+docker compose -p didadi-gateway --profile test run --rm smoke python -u -m scripts.matrix_smoke --check-persistence
+```
+
+## Local interactive preview
+
+After the smoke and persistence check, copy development state without printing credentials. These ignored files contain local test credentials; keep them private.
+
+```sh
+mkdir -p .local
+chmod 700 .local
+docker compose -p didadi-gateway cp appservice:/config/agent-token .local/agent-token
+docker compose -p didadi-gateway cp appservice:/config/smoke-state.json .local/smoke-state.json
+chmod 600 .local/*
+python3 -m scripts.gateway_preview --state-file .local/smoke-state.json --token-file .local/agent-token
+```
+
+Open **http://127.0.0.1:8765**. Send text, wait a second and refresh the timeline. This is a small development harness, not the planned React client. It uses the real Matrix room and runs the deterministic external example runtime in a background thread of the preview process, independently from the gateway. It does not run an LLM or modify Git documents. Test user access tokens stay server-side. The form uses a per-process CSRF token and the server rejects non-loopback Host headers.
+
+Alternatively run your own runtime (Python 3.11+):
+
+```sh
+python3 -m scripts.agent_worker --token-file .local/agent-token
+```
+
+Do not run this alongside the preview if you want one predictable worker. The example echoes received text and never executes message instructions as code.
+
+## Runtime contract
+
+- `GET /agent/tasks`, with `Authorization: Bearer <agent-token>`, leases one task for 60 seconds or returns `{"task": null}`. A task includes `id`, original Matrix `event`, fixed `agent`, `lease`, and any persisted `result` from a failed completion.
+- `POST /agent/complete`, with the same credential, accepts `id`, `lease`, `result` (1–16000 characters). It persists the first result, checks current room access/encryption and sends as `@_didadi_agent_echo:didadi.localhost`. Callers cannot choose a sender, destination room or thread. Retry failed requests with the same lease/result. If the lease expired, reclaim the task and use the persisted result.
+- A reply preserves the original `m.thread` root, or starts a thread on the mentioned event. It contains a plain `m.room.message` fallback and `org.didadi.task` metadata.
+- Each event ID creates at most one task. SQLite transactions serialize claims across processes. Expired leases allow redelivery; external runtimes must use the task ID for their own side-effect deduplication.
+- A stable outbound Matrix transaction ID handles send retries. This does **not** guarantee exactly one message beyond the homeserver's transaction retention, or exactly-once external execution. No task cancellation, fairness, quotas, credential rotation UI, tenant isolation or production readiness is claimed.
+
+## Authorization and persistence
+
+The independent worker token is generated once in `config/agent-token` (existing configuration volumes migrate without changing other credentials). It grants only this one identity's queue. Do not share the broader config volume with external runtimes; copy only this token. Possession of the token permits reading task context. This is trusted local development authorization, not a multi-tenant enrollment system.
+
+Rooms must explicitly invite the managed agent and it must be joined. Any local user can invite it, as in Phase 0. Only plaintext text messages with structured mentions create tasks. Encryption-state lookup fails closed; joined membership and no encryption are checked again before sending. Encrypted events are ignored; no keys are requested or room settings changed. There is no production room-grant UI or E2EE rejection notice yet.
+
+The new `gateway` volume contains the SQLite transaction/task/result ledger and must be retained with the existing config, Synapse and PostgreSQL volumes. `down` keeps all volumes; `down -v` destroys all development data. AS port 9000 is now exposed only on host loopback for outbound local runtimes. Do not expose it or the preview publicly. SQLite is single-node metadata, not document storage: Git remains the only authority for Markdown content, with its separate Issue #3 gates outstanding.

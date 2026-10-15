@@ -58,7 +58,7 @@ class EchoAgent:
                 print('agent_reply source_event=' + event['event_id'], flush=True)
 
 
-def make_handler(agent, hs_token):
+def make_handler(agent, hs_token, gateway=None, agent_token=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # Never log bearer tokens, query strings or message contents.
@@ -72,10 +72,39 @@ def make_handler(agent, hs_token):
             self.wfile.write(payload)
 
         def do_GET(self):
-            if self.path == '/health':
+            if self.path == '/agent/tasks':
+                if not self.agent_auth():
+                    return
+                self.respond(200, {'task': gateway.claim()})
+            elif self.path == '/health':
                 self.respond(200, {'status': 'ok'})
             else:
                 self.respond(404, {'errcode': 'M_UNRECOGNIZED'})
+
+        def agent_auth(self):
+            if (gateway is None or not agent_token or not hmac.compare_digest(
+                    self.headers.get('Authorization', ''), 'Bearer ' + agent_token)):
+                self.respond(403, {'errcode': 'M_FORBIDDEN'})
+                return False
+            return True
+
+        def do_POST(self):
+            if self.path != '/agent/complete':
+                self.respond(404, {})
+                return
+            if not self.agent_auth():
+                return
+            try:
+                size = int(self.headers.get('Content-Length', '0'))
+                if not 0 < size <= 65536:
+                    raise ValueError('invalid body size')
+                data = json.loads(self.rfile.read(size))
+                reply = gateway.complete(data['id'], data['lease'], data['result'])
+                self.respond(200, reply)
+            except (ValueError, KeyError, TypeError):
+                self.respond(400, {'error': 'invalid completion or room access'})
+            except Exception:
+                self.respond(503, {'error': 'retry completion'})
 
         def do_PUT(self):
             if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + hs_token):
@@ -97,6 +126,8 @@ def make_handler(agent, hs_token):
                 return
             try:
                 agent.process(events)
+                if gateway is not None:
+                    gateway.accept(urlsplit(self.path).path.rsplit('/', 1)[-1], events)
             except Exception as error:
                 print('transaction failed: ' + type(error).__name__, flush=True)
                 self.respond(503, {'errcode': 'M_UNKNOWN'})
@@ -108,4 +139,7 @@ def make_handler(agent, hs_token):
 if __name__ == '__main__':
     config = json.loads(Path('/config/appservice.yaml').read_text())
     agent = EchoAgent(os.environ.get('MATRIX_URL', 'http://synapse:8008'), config['as_token'])
-    ThreadingHTTPServer(('0.0.0.0', 9000), make_handler(agent, config['hs_token'])).serve_forever()
+    from src.gateway import Gateway
+    gateway = Gateway(os.environ.get('GATEWAY_DB', '/gateway/tasks.sqlite'), agent)
+    token = Path('/config/agent-token').read_text().strip()
+    ThreadingHTTPServer(('0.0.0.0', 9000), make_handler(agent, config['hs_token'], gateway, token)).serve_forever()
