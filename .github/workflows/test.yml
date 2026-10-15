@@ -19,6 +19,18 @@ jobs:
           git config --global user.email 'ci@example.invalid'
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+  react-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci --prefix client
+      - run: npm --prefix client test
+      - run: npm --prefix client run build
   matrix-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -44,6 +56,23 @@ jobs:
           docker compose cp appservice:/config/smoke-state.json .local/smoke-state.json
           chmod 600 .local/*
           python3 -m scripts.document_smoke --state-file .local/smoke-state.json --token-file .local/agent-token --repo .local/documents.git
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Real React client adapter and Matrix SDK regression
+        run: |
+          npm ci --prefix client
+          npm --prefix client run build
+          python3 -m src.client_server --state-file .local/smoke-state.json --token-file .local/agent-token --repo .local/documents.git --metadata .local/client.sqlite --matrix-url http://127.0.0.1:8008 --gateway-url http://127.0.0.1:9000 > .local/client.log 2>&1 &
+          client_pid=$!
+          python3 -m scripts.document_worker --token-file .local/agent-token --repo .local/documents.git > .local/client-worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$client_pid" "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8767/api/session > /dev/null; then break; fi
+            sleep 1
+          done
+          node client/scripts/smoke.mjs
       - name: Diagnostics
         if: failure()
         run: |

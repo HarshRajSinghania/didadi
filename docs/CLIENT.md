@@ -1,0 +1,57 @@
+# Document-first React workspace
+
+This local client milestone depends on the Git document/runtime spike (PR #6) and its gateway dependency (PR #5). It uses React, Vite and **matrix-js-sdk** for real room membership/state, timeline reads, message sends, thread relations and stable outbound transaction IDs. It is not a static screenshot or an LLM UI.
+
+## Run with the existing document demo
+
+First follow [GIT_DOCUMENTS.md](GIT_DOCUMENTS.md) to start the isolated Matrix stack on `8009/9001` and the document preview/runtime on `8766`. Keep that document runtime running: the React adapter does not start a competing worker.
+
+Requires Node 22+ (CI uses 24), Python 3.11+, Git and the existing local test stack:
+
+```sh
+npm ci --prefix client
+npm --prefix client run build
+python3 -m src.client_server --state-file .local/smoke-state.json \
+  --token-file .local/agent-token --repo .local/documents.git \
+  --metadata .local/client.sqlite --port 8767
+```
+
+Open **http://127.0.0.1:8767**. When using another checkout, point the file arguments to the existing document demo's private state/token/bare-repository files. Do not copy credentials into the frontend. This task's preview reuses `../didadi-docs/.local/` and leaves the older `8765/8766` servers and their data running.
+
+The default screen is a document, not a message dashboard. The left sidebar contains the one real granted document and real allowed rooms. Read renders Markdown safely; Edit opens a working Markdown toolbar/source editor. Save sends a Matrix task and waits for the external example runtime to commit to Git. History opens fixed commit snapshots; a stale edit shows a conflict and preserves the draft until the user explicitly loads the latest version.
+
+Discussion and Example Agent are optional right panels. The example is labeled deterministic echo/no LLM. Room messages, thread replies and task completion are real. Version receipts and task IDs are collapsed in details. No fake multi-document tree, unimplemented sharing buttons, rich collaboration cursors or intelligent edits are shown.
+
+Rooms can be selected or created as private local test rooms using the existing non-admin fixture identity. The managed example Agent is invited through the same verified AS flow. Creation retries use a deterministic alias and a local operation record. Message/save retries reuse Matrix transaction IDs; repeated clicks are gated while pending. Switching rooms keeps unsent chat drafts in memory. All demo rooms intentionally share the single `demo.md` grant; this is labeled in the document context and is not a production room/resource permission model.
+
+## Development adapter boundary
+
+`src/client_server.py` binds only to `127.0.0.1`. It accepts only loopback backend URLs and uses the existing fixture user token server-side. The SDK's browser-side `local-development-session` string is a placeholder, not a credential. Matrix, AS and worker tokens never appear in the session response or browser assets.
+
+The adapter exposes an allowlist of joined room state/messages/event/send routes, filters joined rooms to the explicitly seeded/created local rooms, disallows user/token overrides, checks CSRF and Host/Origin, and refuses sends in encrypted rooms. Document task paths/grants cannot be supplied by messages. The gateway independently checks encryption/membership before acceptance and completion. No credentials, account/security settings or public exposure are added. This is a trusted loopback development session, not production authentication or multi-tenant authorization.
+
+Markdown has no raw HTML rendering. React escapes messages, and the adapter serves a same-origin CSP. Static paths cannot leave the build directory. Only the existing deterministic runtime can service document requests. Sending to an invited Agent that has not joined yields a visible retryable error.
+
+## Verification and visual states
+
+```sh
+npm --prefix client test
+npm --prefix client run build
+python3 -m unittest discover -s tests -v
+```
+
+Component tests cover the normal reading surface, editable Markdown formatting, loading/failure recovery, conflicts preserving edits, failed request transaction reuse, repeated sends/saves, historical snapshots with inert HTML, and per-room chat drafts. Backend tests cover room/route/identity boundaries, E2EE rejection, idempotent room recovery, CSRF, Host/Origin, static traversal and token non-disclosure.
+
+CI also starts the adapter and an independent document worker against real Synapse/PostgreSQL, then runs `node client/scripts/smoke.mjs`. That SDK regression verifies room reads, duplicate transaction deduplication, external echo reply, Git save/history/conflict and idempotent private room creation. It uses isolated CI data and does not overwrite the user's local preview document.
+
+`scripts.client_visual_qa` is a separate, explicitly labeled visual regression adapter for `loading` and `failure`. It delays/fails only document reads, does not change stored data, and is not enabled in the normal client. Actual normal/save/conflict states were exercised against the real backend. See the design audit in `artifact/004-workspace-client/design.md` and runtime evidence in [VALIDATION.md](VALIDATION.md).
+
+## Remaining scope
+
+Production login/tenant grants, real model runtimes, E2EE, multiple document creation/tree operations, per-room document ACLs, realtime collaborative rich editing, durable task views across browser sessions, full-text search, room administration, network Git remotes and public deployment remain outside this milestone. Search filters the small real local navigation list; it is not a full-text index. The SDK bundles its optional crypto artifacts but this demo does not initialize crypto or claim E2EE. Bundle size tuning and full accessibility certification are not claimed.
+
+## Synthetic hosted UI preview
+
+Build with `VITE_PREVIEW_MODE=synthetic npm --prefix client run build -- --outDir ../.local/vercel-preview`. Upload only that isolated static output. The explicit preview banner identifies browser-only sample data. It uses localStorage for document snapshots, rooms, messages and deterministic example replies; it makes no backend requests. It does not connect Matrix, Git, a remote runtime or an LLM. The normal build retains the real loopback backend.
+
+An anonymous Vercel temporary deployment expires after approximately one hour. It requires no persistent login credentials. A durable hosted environment with a real backend remains separate work.
