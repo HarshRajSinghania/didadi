@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {connect, errorText} from './api';
 import ReactMarkdown from 'react-markdown';
+import {BlockEditor} from './BlockEditor';
 import {BookOpen, Search, ChevronDown, ChevronRight, FileText, MessageSquare, Bot, History, Plus, ArrowUp, X, Check, AlertCircle, RefreshCw, Bold, Italic, Heading2, List, Code2} from 'lucide-react';
 const short = value => value?.slice(0,10) || 'not created';
 
@@ -42,13 +43,15 @@ export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpe
   const lock=useRef(false),attempt=useRef(null), mounted=useRef(true),loadSequence=useRef(0);
   const [reading,setReading]=useState(false);
   const editor=useRef(null);
+  const [editorRevision,setEditorRevision]=useState(0),[composing,setComposing]=useState(false);
+  useEffect(()=>setComposing(false),[mode,editorRevision]);
   const title=snapshot?(draft.match(/^# +(.+)$/m)?.[1]||'Untitled document'):'demo.md';
   useEffect(()=>onMeta({title,dirty:Boolean(snapshot&&draft!==(snapshot.content||'')),busy,historical}),[title,draft,snapshot,busy,historical]);
   const roomRef=useRef(room);roomRef.current=room;
   async function load(commit, preserveDraft=false) {
     const sequence=++loadSequence.current;setReading(true);setError('');
     try {const [doc,versions]=await Promise.all([api.document(roomRef.current,commit),api.history(roomRef.current)]);
-      if(!mounted.current||sequence!==loadSequence.current)return;if(preserveDraft&&draft!==(snapshot?.content||''))setRecoveryDraft(draft);setSnapshot(doc);setDraft(doc.content||'');setHistory(versions.commits);setHistorical(Boolean(commit));setConflict(false);setNotice('');}
+      if(!mounted.current||sequence!==loadSequence.current)return;if(preserveDraft&&draft!==(snapshot?.content||''))setRecoveryDraft(draft);setSnapshot(doc);setDraft(doc.content||'');setEditorRevision(v=>v+1);setHistory(versions.commits);setHistorical(Boolean(commit));setConflict(false);setNotice('');}
     catch(e){if(sequence===loadSequence.current)setError(errorText(e));}
     finally{if(sequence===loadSequence.current)setReading(false);}
   }
@@ -70,8 +73,11 @@ export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpe
     check();const timer=setInterval(check,1200);return()=>{cancelled=true;clearInterval(timer)};
   },[pending,api]);
   async function submit(action){
-    if(lock.current||!snapshot)return;lock.current=true;setBusy(true);setError('');setNotice('');
-    const command=action==='write'?{action,content:draft,base_blob:snapshot.blob}:{action, ...(historical?{commit:snapshot.commit}:{})};
+    const latestDraft=mode==='edit'?(editor.current?.markdown()??draft):draft;
+    if(action==='write'&&latestDraft.length>6000){setError('Document text must contain at most 6000 characters. Your draft is kept.');return;}
+    if(action==='write')setDraft(latestDraft);
+    if(lock.current||!snapshot||composing)return;lock.current=true;setBusy(true);setError('');setNotice('');
+    const command=action==='write'?{action,content:latestDraft,base_blob:snapshot.blob}:{action, ...(historical?{commit:snapshot.commit}:{})};
     const content={msgtype:'m.text',body:action==='write'?'Save demo.md from workspace':'Read demo.md from Git',
       'm.mentions':{user_ids:[api.session.agentId]},'org.didadi.document':command};
     const key=JSON.stringify([room,content]);if(attempt.current?.key!==key)attempt.current={key,id:crypto.randomUUID()};
@@ -80,29 +86,22 @@ export function Documents({api,room,onSent,mode='read',setMode=()=>{},historyOpe
     catch(e){setError(errorText(e));setBusy(false);lock.current=false;}
   }
   const dirty=snapshot&&draft!==(snapshot.content||'');
-  function format(before,after=before){
-    const input=editor.current;if(!input)return;
-    const start=input.selectionStart,end=input.selectionEnd;
-    setDraft(draft.slice(0,start)+before+draft.slice(start,end)+after+draft.slice(end));
-    requestAnimationFrame(()=>{input.focus();input.setSelectionRange(start+before.length,end+before.length)});
-  }
   const bodyMarkdown=draft.replace(/^# +.+\n?/, '');
   return <section className="document-surface" aria-label="Git document editor">
     <div className="document-statusbar"><span className={historical?'historical-label':'save-state'}>
       {!snapshot?(error?'Document unavailable':'Loading document…'):reading?'Loading version…':historical?<><History size={14}/> Historical version</>:busy?<><RefreshCw size={14} className="spin"/> Saving through example Agent…</>:dirty?'Unsaved changes':<><Check size={14}/> All changes saved</>}</span>
-      <div>{mode==='edit'&&<button className="primary compact" onClick={()=>submit('write')} disabled={busy||reading||!snapshot}>Save changes</button>}</div>
+      <div>{mode==='edit'&&<button className="primary compact" onClick={()=>submit('write')} disabled={busy||reading||composing||!snapshot}>Save changes</button>}</div>
     </div>
     {historical&&<div className="state-banner historical-banner"><History size={17}/><span>You’re viewing an earlier version. Editing it may return a conflict.</span><button onClick={()=>load(undefined,true)}>Back to latest</button></div>}
     {error&&<div className="state-banner warning" role="alert"><AlertCircle size={18}/><div><strong>{conflict?'This document has a newer version':'Couldn’t complete the request'}</strong><p>{error}</p></div>{conflict?<button onClick={()=>load(undefined,true)}>Load latest to merge</button>:<button onClick={()=>snapshot?submit('write'):load()}>Retry</button>}</div>}
     {notice&&<div className="state-banner success" role="status"><Check size={17}/><span>{notice}</span></div>}
     {pending&&<p className="quiet-status" role="status">Your request is queued. The example runtime will post the result in the room.</p>}
-    {recoveryDraft!==null&&<div className="state-banner warning"><div><strong>Your previous draft is preserved</strong><p>Compare it with the latest version below, then merge your changes.</p><textarea aria-label="Preserved draft" readOnly value={recoveryDraft}/></div><button onClick={()=>{setDraft(recoveryDraft);setMode('edit')}}>Restore previous draft</button></div>}
+    {recoveryDraft!==null&&<div className="state-banner warning"><div><strong>Your previous draft is preserved</strong><p>Compare it with the latest version below, then merge your changes.</p><textarea aria-label="Preserved draft" readOnly value={recoveryDraft}/></div><button onClick={()=>{setDraft(recoveryDraft);setEditorRevision(v=>v+1);setMode('edit')}}>Restore previous draft</button></div>}
     <div className="document-scroll"><div className="document-page">
-      {snapshot?<><div className="page-eyebrow"><FileText size={16}/><span>Workspace document</span></div><h1 className="document-title">{title}</h1>
+      {snapshot?<><div className="page-eyebrow"><FileText size={16}/><span>Workspace document</span></div>{mode!=='edit'&&<h1 className="document-title">{title}</h1>}
         <div className="page-byline"><span className="tiny-avatar">D</span><span>Shared workspace</span><span className="byline-dot"/><span>{api.session.synthetic?'Browser-only snapshot':'Stored in Git'}</span></div>
-        {mode==='edit'?<><div className="editor-toolbar" aria-label="Markdown formatting"><button aria-label="Heading" onClick={()=>format('## ','')}><Heading2 size={17}/></button><button aria-label="Bold" onClick={()=>format('**')}><Bold size={16}/></button><button aria-label="Italic" onClick={()=>format('*')}><Italic size={16}/></button><span/><button aria-label="List" onClick={()=>format('- ','')}><List size={17}/></button><button aria-label="Inline code" onClick={()=>format('`')}><Code2 size={17}/></button><span className="toolbar-label">Markdown</span></div>
-          <label htmlFor="markdown" className="sr-only">Markdown document</label><textarea ref={editor} id="markdown" className="source-editor" spellCheck="false" value={draft} onChange={e=>setDraft(e.target.value)} maxLength={6000} disabled={busy||reading}/>
-          <div className="editor-foot"><span>{draft.length} / 6000 characters</span><button onClick={()=>load(undefined,true)} disabled={busy}>Load latest</button></div>
+        {mode==='edit'?<><BlockEditor key={editorRevision} ref={editor} value={draft} onChange={setDraft} onComposingChange={setComposing} disabled={busy||reading}/>
+          <div className="editor-foot"><span>{draft.length} / 6000 characters · Markdown-backed blocks</span><button onClick={()=>load(undefined,true)} disabled={busy}>Load latest</button></div>
         </>:<div className="markdown-body">{draft?<ReactMarkdown>{bodyMarkdown}</ReactMarkdown>:<div className="empty-document"><p>A quiet space for your first document.</p><button className="primary" onClick={()=>setMode('edit')}>Start writing</button></div>}</div>}
         <div className="document-bottom"><span><BookOpen size={14}/> demo.md</span><button onClick={()=>submit('read')} disabled={busy}>Ask example Agent to read</button></div>
       </>:error?<div className="document-unavailable"><FileText size={30}/><h2>This document is temporarily unavailable</h2><p>Your workspace is still open. Retry above to load the document.</p></div>:<div className="document-skeleton" role="status" aria-label="Loading document"><div/><div/><div/><div/><p>Loading document…</p></div>}
